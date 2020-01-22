@@ -79,9 +79,11 @@ if (BUILD_EXAMPLES AND BUILD_GLSL_EXTENSIONS)
 endif()
 
 if(BUILD_EXAMPLES)
-    add_subdirectory(examples)
-    add_subdirectory(tools)
+    #add_subdirectory(examples)
+    #add_subdirectory(tools)
 endif()
+
+add_subdirectory(cheetah-vision)
 
 if(BUILD_UNIT_TESTS)
     add_subdirectory(unit-tests)

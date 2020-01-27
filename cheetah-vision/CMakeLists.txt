@@ -36,6 +36,7 @@ target_link_libraries(cheetah-vision ${DEPENDENCIES})
 target_link_libraries(cheetah-vision lcm)
 
 find_package( OpenCV REQUIRED )
+message(${OpenCV_INCLUDE_DIRS})
 include_directories(${OpenCV_INCLUDE_DIRS})
-target_link_libraries(cheetah-vision ${OpenCV_LIBS})
+target_link_libraries(cheetah-vision ${OpenCV_LIBS} realsense2-gl)
 

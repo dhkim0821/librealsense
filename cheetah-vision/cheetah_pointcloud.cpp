@@ -9,11 +9,13 @@
 #include <type_traits>
 #include <cmath>
 #include <opencv2/core/core.hpp>
+#include <librealsense2-gl/rs_processing_gl.hpp> // Include GPU-Processing API
 #include <opencv2/core/cuda.hpp>
-#include "opencv2/imgproc.hpp"
+#include <opencv2/imgproc.hpp>
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/cudafilters.hpp"
 #include "cheetah_pointcloud.h"
+#include "opencv2/imgcodecs.hpp"
 #include <unistd.h>
 
 #include <chrono>
@@ -23,10 +25,10 @@ int main(int argc, char * argv[]) try
   printf("start poincloud processing\n");
   rs2::pointcloud pc;
   rs2::points points;
-  rs2::pipeline D435pipe;
+  rs2::pipeline pipe;
   rs2::config D435cfg;
   D435cfg.enable_stream(RS2_STREAM_DEPTH, 640,480, RS2_FORMAT_Z16, 90);
-  D435pipe.start(D435cfg);
+  pipe.start(D435cfg);
 
   LocalizationHandle localizationObject;
   vision_lcm.subscribe("global_to_robot", &LocalizationHandle::handlePose, &localizationObject);
@@ -46,16 +48,20 @@ int main(int argc, char * argv[]) try
   }
 
   int iter(0);
+
+  rs2::gl::uploader   upload;     // used to explicitly copy frame to the GPU
+
   while (true) { 
     ++iter;
 
     auto start = std::chrono::system_clock::now();
 
-    auto D435frames = D435pipe.wait_for_frames();
+    rs2::frameset D435frames = pipe.wait_for_frames();
     auto depth = D435frames.get_depth_frame();
+    depth = upload.process(depth);
 
     points = pc.calculate(depth);
-    //_ProcessPointCloudData(points);
+    _ProcessPointCloudData(points);
 
     auto end = std::chrono::system_clock::now();
 
@@ -118,7 +124,8 @@ void _ProcessPointCloudData(const rs2::points & points){
     }
   }
 
-  int num_skip = floor(num_valid_points/5000);
+  int num_skip = floor(num_valid_points/1000);
+  int maximum_valid_point = 5000;
 
   if(num_skip == 0){ num_skip = 1; }
   for (int i = 0; i < floor(num_valid_points/num_skip); i++)
@@ -127,29 +134,33 @@ void _ProcessPointCloudData(const rs2::points & points){
     cf_pointcloud.pointlist[k][1] = -vertices[valid_indices[i*num_skip]].x;
     cf_pointcloud.pointlist[k][2] = -vertices[valid_indices[i*num_skip]].y;
     ++k;
-    if(k>5000){
+    if(k>maximum_valid_point){
       break;
     }
   }
   SE3::SE3Multi(global_to_robot, robot_to_D435, global_to_D435);
   global_to_D435.pointcloudTransformation(cf_pointcloud, wf_pointcloud);
 
-  wfPCtoHeightmap(&wf_pointcloud, &world_heightmap, 5000); //right
+  wfPCtoHeightmap(&wf_pointcloud, &world_heightmap, maximum_valid_point); //right
   extractLocalFromWorldHeightmap(global_to_robot.xyz, &world_heightmap, &local_heightmap); // writes over local heightmap in place
 
-  //cv::Mat cv_local_heightmap(100, 100, CV_64F, local_heightmap.map);
-  cv::Mat cv_local_heightmap(100, 100, CV_32F, local_heightmap.map);
-  cv::cuda::GpuMat gpu_heightmap(cv_local_heightmap);
+  //int cv_type = CV_32F;
+  int cv_type = CV_64F;
+  cv::Mat cv_local_heightmap(100, 100, cv_type, local_heightmap.map);
+  //cv::Mat cv_local_heightmap(100, 100, CV_32F, local_heightmap.map);
+  //cv::cuda::GpuMat gpu_heightmap(cv_local_heightmap);
 
   //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
   //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
   //cv::dilate( cv_local_heightmap, cv_local_heightmap, dilation_element );	
-  cv_local_heightmap = max(cv_local_heightmap, 0.);
-  threshold(gpu_heightmap, gpu_heightmap, 0., 100., CV_THRESH_TOZERO);
+  //cv_local_heightmap = max(cv_local_heightmap, 0.);
+  
+  //threshold(gpu_heightmap, gpu_heightmap, 0.0, 255., THRESH_TOZERO);
+  //threshold(gpu_heightmap, gpu_heightmap, 0.0, 255., 3);
 
   cv::Mat	grad_x, grad_y;
-  cv::Sobel(cv_local_heightmap, grad_x, CV_64F, 1,0,3,1,0,cv::BORDER_DEFAULT);
-  cv::Sobel(cv_local_heightmap, grad_y, CV_64F, 0,1,3,1,0,cv::BORDER_DEFAULT);
+  cv::Sobel(cv_local_heightmap, grad_x, cv_type, 1,0,3,1,0,cv::BORDER_DEFAULT);
+  cv::Sobel(cv_local_heightmap, grad_y, cv_type, 0,1,3,1,0,cv::BORDER_DEFAULT);
   cv::Mat abs_grad_x = abs(grad_x);
   cv::Mat abs_grad_y = abs(grad_y);
   cv::Mat grad_max = max(abs_grad_x, abs_grad_y);
@@ -174,7 +185,7 @@ void _ProcessPointCloudData(const rs2::points & points){
   traversability_mat = no_step_mat + jump_mat;
 
   //cv::Mat mat;
-  //cv_local_heightmap.download(mat);
+  //gpu_heightmap.download(mat);
 
   for(int i(0); i<100; ++i){
     for(int j(0); j<100; ++j){
@@ -190,7 +201,6 @@ void _ProcessPointCloudData(const rs2::points & points){
   (local_heightmap).robot_loc[0] = global_to_robot.xyz[0];
   (local_heightmap).robot_loc[1] = global_to_robot.xyz[1];
   (local_heightmap).robot_loc[2] = global_to_robot.xyz[2];
-
 
   vision_lcm.publish("local_heightmap", &local_heightmap);
   vision_lcm.publish("traversability", &traversability);

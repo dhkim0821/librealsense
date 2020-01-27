@@ -56,6 +56,9 @@ void extractLocalFromWorldHeightmap(double* xyz, worldmap* worldmap_ptr, heightm
           world_map_y_ind >= 0 && world_map_y_ind < WORLD_SIZE*CELLS_PER_M)
       {
         (*local_heightmap_ptr).map[i][j] = (*worldmap_ptr).map[world_map_x_ind][world_map_y_ind];
+        //if( fabs((*local_heightmap_ptr).map[i][j]) >0.01){
+          //printf("non zero height: %f\n", (*local_heightmap_ptr).map[i][j]);
+        //}
       }			
     }
   }
@@ -67,9 +70,17 @@ void wfPCtoHeightmap(rs_pointcloud_t* wf_pointcloud_ptr, worldmap* world_heightm
   {
     int point_x_ind = (*wf_pointcloud_ptr).pointlist[i][0]*CELLS_PER_M + WORLD_SIZE*CELLS_PER_M/2 -1;
     int point_y_ind = (*wf_pointcloud_ptr).pointlist[i][1]*CELLS_PER_M + WORLD_SIZE*CELLS_PER_M/2 -1;
-    if (point_x_ind >= 0 && point_x_ind < WORLD_SIZE*CELLS_PER_M && point_y_ind >= 0 && point_y_ind < WORLD_SIZE*CELLS_PER_M)
-    {			
+
+    if (point_x_ind >= 0 && 
+        point_x_ind < WORLD_SIZE*CELLS_PER_M && 
+        point_y_ind >= 0 && 
+        point_y_ind < WORLD_SIZE*CELLS_PER_M)
+    {
       (*world_heightmap_ptr).map[point_x_ind][point_y_ind] = (*wf_pointcloud_ptr).pointlist[i][2];
+
+      //if( fabs((*world_heightmap_ptr).map[point_x_ind][point_y_ind]) >0.01){
+        //printf("non zero height: %f\n", (*world_heightmap_ptr).map[point_x_ind][point_y_ind]);
+      //}
     }
   }
 }

@@ -9,9 +9,14 @@
 #include <type_traits>
 #include <cmath>
 #include <opencv2/core/core.hpp>
+#include <opencv2/core/cuda.hpp>
 #include "opencv2/imgproc.hpp"
+#include "opencv2/cudaarithm.hpp"
+#include "opencv2/cudafilters.hpp"
 #include "cheetah_pointcloud.h"
 #include <unistd.h>
+
+#include <chrono>
 
 int main(int argc, char * argv[]) try
 {
@@ -26,7 +31,6 @@ int main(int argc, char * argv[]) try
   LocalizationHandle localizationObject;
   vision_lcm.subscribe("global_to_robot", &LocalizationHandle::handlePose, &localizationObject);
   std::thread localization_thread(&handleLCM);
-
 
   // World heightmap initialization
   for(int i(0); i<1000;++i){
@@ -44,13 +48,25 @@ int main(int argc, char * argv[]) try
   int iter(0);
   while (true) { 
     ++iter;
+
+    auto start = std::chrono::system_clock::now();
+
     auto D435frames = D435pipe.wait_for_frames();
     auto depth = D435frames.get_depth_frame();
 
     points = pc.calculate(depth);
-    _ProcessPointCloudData(points);
+    //_ProcessPointCloudData(points);
 
-    if(iter%3000 == 1) printf("point cloud loop is run\n");
+    auto end = std::chrono::system_clock::now();
+
+    //if(iter%3000 == 1) printf("point cloud loop is run\n");
+    if(iter%10 == 1){
+        printf("point cloud loop is run\n");
+        double elapsed_time = 
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        printf("time taken: %f (ms)\n", elapsed_time);
+    }
   }
   return EXIT_SUCCESS;
 }
@@ -72,6 +88,7 @@ void _ProcessPointCloudData(const rs2::points & points){
   int erosion_size = 2;
   //int erosion_size = 4;
   static cv::Mat erosion_element = cv::getStructuringElement(
+  //static cv::cuda::GpuMat erosion_element = cv::cuda::getStructuringElement(
       cv::MORPH_ELLIPSE, cv::Size( 2*erosion_size + 1, 2*erosion_size+1 ), 
       cv::Point( erosion_size, erosion_size ) );
   //int dilation_size = 1;
@@ -120,10 +137,15 @@ void _ProcessPointCloudData(const rs2::points & points){
   wfPCtoHeightmap(&wf_pointcloud, &world_heightmap, 5000); //right
   extractLocalFromWorldHeightmap(global_to_robot.xyz, &world_heightmap, &local_heightmap); // writes over local heightmap in place
 
-  cv::Mat cv_local_heightmap(100, 100, CV_64F, local_heightmap.map);
-  cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
-  cv::dilate( cv_local_heightmap, cv_local_heightmap, dilation_element );	
+  //cv::Mat cv_local_heightmap(100, 100, CV_64F, local_heightmap.map);
+  cv::Mat cv_local_heightmap(100, 100, CV_32F, local_heightmap.map);
+  cv::cuda::GpuMat gpu_heightmap(cv_local_heightmap);
+
+  //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
+  //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
+  //cv::dilate( cv_local_heightmap, cv_local_heightmap, dilation_element );	
   cv_local_heightmap = max(cv_local_heightmap, 0.);
+  threshold(gpu_heightmap, gpu_heightmap, 0., 100., CV_THRESH_TOZERO);
 
   cv::Mat	grad_x, grad_y;
   cv::Sobel(cv_local_heightmap, grad_x, CV_64F, 1,0,3,1,0,cv::BORDER_DEFAULT);
@@ -132,16 +154,33 @@ void _ProcessPointCloudData(const rs2::points & points){
   cv::Mat abs_grad_y = abs(grad_y);
   cv::Mat grad_max = max(abs_grad_x, abs_grad_y);
 
+  //cv::cuda::GpuMat gpu_grad_x, gpu_grad_y;
+
+  //cv::Ptr<cv::cuda::Filter> sobelxfilter = cv::cuda::createSobelFilter(CV_32F, CV_32F, 1, 0, 3);
+  //sobelxfilter->apply(gpu_heightmap, gpu_grad_x);
+
+  //cv::Ptr<cv::cuda::Filter> sobelyfilter = cv::cuda::createSobelFilter(CV_32F, CV_32F, 0, 1, 3);
+  //sobelxfilter->apply(gpu_heightmap, gpu_grad_y);
+  
+  //cv::cuda::GpuMat gpu_abs_grad_x = abs(gpu_grad_x);
+  //cv::cuda::GpuMat gpu_abs_grad_y = abs(gpu_grad_y);
+  //cv::cuda::GpuMat gpu_grad_max = max(abs_grad_x, abs_grad_y);
+
+
   cv::Mat no_step_mat, jump_mat;
   cv::threshold(grad_max, no_step_mat, 0.07, 1, 0);
   cv::threshold(grad_max, jump_mat, 0.5, 1, 0);
   cv::Mat traversability_mat(100, 100, CV_32S);
   traversability_mat = no_step_mat + jump_mat;
 
+  //cv::Mat mat;
+  //cv_local_heightmap.download(mat);
+
   for(int i(0); i<100; ++i){
     for(int j(0); j<100; ++j){
       //if(cv_local_heightmap.at<double>(i,j)>0){
         local_heightmap.map[i][j] = cv_local_heightmap.at<double>(i,j);
+        //local_heightmap.map[i][j] = mat.at<double>(i,j);
       //}else{
         //local_heightmap.map[i][j] = 0.;
       //}

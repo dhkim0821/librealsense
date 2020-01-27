@@ -89,20 +89,6 @@ catch (const std::exception & e)
 }
 
 void _ProcessPointCloudData(const rs2::points & points){
-  // filter
-  //int erosion_size = 1;
-  int erosion_size = 2;
-  //int erosion_size = 4;
-  static cv::Mat erosion_element = cv::getStructuringElement(
-  //static cv::cuda::GpuMat erosion_element = cv::cuda::getStructuringElement(
-      cv::MORPH_ELLIPSE, cv::Size( 2*erosion_size + 1, 2*erosion_size+1 ), 
-      cv::Point( erosion_size, erosion_size ) );
-  //int dilation_size = 1;
-  int dilation_size = 2;
-  //int dilation_size = 4;
-  static cv::Mat dilation_element = cv::getStructuringElement(
-      cv::MORPH_ELLIPSE, cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ), 
-      cv::Point( dilation_size, dilation_size ) );
 
   static rs_pointcloud_t cf_pointcloud; // 921600
   static rs_pointcloud_t wf_pointcloud; 
@@ -147,12 +133,20 @@ void _ProcessPointCloudData(const rs2::points & points){
   //int cv_type = CV_32F;
   int cv_type = CV_64F;
   cv::Mat cv_local_heightmap(100, 100, cv_type, local_heightmap.map);
-  //cv::Mat cv_local_heightmap(100, 100, CV_32F, local_heightmap.map);
-  //cv::cuda::GpuMat gpu_heightmap(cv_local_heightmap);
+
+  // filter
+  int erosion_size = 4;
+  static cv::Mat erosion_element = cv::getStructuringElement(
+      cv::MORPH_ELLIPSE, cv::Size( 2*erosion_size + 1, 2*erosion_size+1 ), 
+      cv::Point( erosion_size, erosion_size ) );
+  int dilation_size = 4;
+  static cv::Mat dilation_element = cv::getStructuringElement(
+      cv::MORPH_ELLIPSE, cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ), 
+      cv::Point( dilation_size, dilation_size ) );
 
   //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
-  //cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
-  //cv::dilate( cv_local_heightmap, cv_local_heightmap, dilation_element );	
+  cv::erode( cv_local_heightmap, cv_local_heightmap, erosion_element );
+  cv::dilate( cv_local_heightmap, cv_local_heightmap, dilation_element );
   //cv_local_heightmap = max(cv_local_heightmap, 0.);
   
   //threshold(gpu_heightmap, gpu_heightmap, 0.0, 255., THRESH_TOZERO);
@@ -164,20 +158,6 @@ void _ProcessPointCloudData(const rs2::points & points){
   cv::Mat abs_grad_x = abs(grad_x);
   cv::Mat abs_grad_y = abs(grad_y);
   cv::Mat grad_max = max(abs_grad_x, abs_grad_y);
-
-  //cv::cuda::GpuMat gpu_grad_x, gpu_grad_y;
-
-  //cv::Ptr<cv::cuda::Filter> sobelxfilter = cv::cuda::createSobelFilter(CV_32F, CV_32F, 1, 0, 3);
-  //sobelxfilter->apply(gpu_heightmap, gpu_grad_x);
-
-  //cv::Ptr<cv::cuda::Filter> sobelyfilter = cv::cuda::createSobelFilter(CV_32F, CV_32F, 0, 1, 3);
-  //sobelxfilter->apply(gpu_heightmap, gpu_grad_y);
-  
-  //cv::cuda::GpuMat gpu_abs_grad_x = abs(gpu_grad_x);
-  //cv::cuda::GpuMat gpu_abs_grad_y = abs(gpu_grad_y);
-  //cv::cuda::GpuMat gpu_grad_max = max(abs_grad_x, abs_grad_y);
-
-
   cv::Mat no_step_mat, jump_mat;
   cv::threshold(grad_max, no_step_mat, 0.07, 1, 0);
   cv::threshold(grad_max, jump_mat, 0.5, 1, 0);
@@ -188,16 +168,12 @@ void _ProcessPointCloudData(const rs2::points & points){
   //gpu_heightmap.download(mat);
 
   for(int i(0); i<100; ++i){
-    for(int j(0); j<100; ++j){
-      //if(cv_local_heightmap.at<double>(i,j)>0){
-        local_heightmap.map[i][j] = cv_local_heightmap.at<double>(i,j);
-        //local_heightmap.map[i][j] = mat.at<double>(i,j);
-      //}else{
-        //local_heightmap.map[i][j] = 0.;
-      //}
-      traversability.map[i][j] = traversability_mat.at<double>(i,j);
-    }
+      for(int j(0); j<100; ++j){
+          local_heightmap.map[i][j] = cv_local_heightmap.at<double>(i,j);
+          traversability.map[i][j] = traversability_mat.at<double>(i,j);
+      }
   }
+
   (local_heightmap).robot_loc[0] = global_to_robot.xyz[0];
   (local_heightmap).robot_loc[1] = global_to_robot.xyz[1];
   (local_heightmap).robot_loc[2] = global_to_robot.xyz[2];

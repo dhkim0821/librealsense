@@ -5,6 +5,8 @@ project(librealsense2 LANGUAGES CXX C)
 include(CMake/lrs_options.cmake)
 include(CMake/connectivity_check.cmake)
 
+SET(CMAKE_PREFIX_PATH "/usr/local/cuda-10.0")
+
 #Deprecation message, should be removed in future releases
 if(${FORCE_LIBUVC} OR ${FORCE_WINUSB_UVC} OR ${ANDROID_USB_HOST_UVC})
     MESSAGE(DEPRECATION "FORCE_LIBUVC, FORCE_WINUSB_UVC and ANDROID_USB_HOST_UVC are deprecated, use FORCE_RSUSB_BACKEND instead")

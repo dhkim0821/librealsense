@@ -25,9 +25,12 @@ int main(int argc, char * argv[]) try
   printf("start poincloud processing\n");
   rs2::pointcloud pc;
   rs2::points points;
+  
   rs2::pipeline pipe;
   rs2::config D435cfg;
-  D435cfg.enable_stream(RS2_STREAM_DEPTH, 640,480, RS2_FORMAT_Z16, 90);
+  D435cfg.enable_stream(RS2_STREAM_DEPTH, 480,270, RS2_FORMAT_Z16, 90);
+  //D435cfg.enable_stream(RS2_STREAM_DEPTH, 640,480, RS2_FORMAT_Z16, 90);
+  //D435cfg.enable_stream(RS2_STREAM_DEPTH);
   pipe.start(D435cfg);
 
   LocalizationHandle localizationObject;
